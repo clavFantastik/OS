@@ -1,92 +1,61 @@
-#include <fcntl.h>
-#include <semaphore.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <semaphore.h>
 
-#define SHM_NAME "/my_shared_memory"
-#define SEM_PARENT_NAME "/sem_parent"
-#define SEM_CHILD_NAME "/sem_child"
-#define SHM_SIZE 1024
+#define MAX_BUFFER 1024
 
-void error_print(const char *str) {
-    if (str == NULL) {
-        write(STDERR_FILENO, "ERROR\n", 6);
-    } else {
-        write(STDERR_FILENO, str, strlen(str));
-    }
-    exit(EXIT_FAILURE);
-}
+int main() {
+    int fd = shm_open("/my_shm", O_CREAT | O_RDWR, 0666);
+    ftruncate(fd, MAX_BUFFER);
+    char *shared_memory = mmap(0, MAX_BUFFER, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
-int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        error_print("Wrong input, try one file\n");
-    }
-
-    FILE *file = fopen(argv[1], "r");
-    if (!file) {
-        error_print("File didn't open\n");
+    if (shared_memory == MAP_FAILED) {
+        perror("mmap failed");
+        exit(EXIT_FAILURE);
     }
 
-    int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
-    if (shm_fd == -1) {
-        error_print("Failed to create shared memory\n");
-    }
-    if (ftruncate(shm_fd, SHM_SIZE) == -1) {
-        error_print("Failed to set size of shared memory\n");
-    }
-
-    void *shm_ptr = mmap(0, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    if (shm_ptr == MAP_FAILED) {
-        error_print("Failed to map shared memory\n");
-    }
-
-    sem_t *sem_parent = sem_open(SEM_PARENT_NAME, O_CREAT, 0666, 1);
-    sem_t *sem_child = sem_open(SEM_CHILD_NAME, O_CREAT, 0666, 0);
-    if (sem_parent == SEM_FAILED || sem_child == SEM_FAILED) {
-        error_print("Failed to create semaphores\n");
+    sem_t *sem = sem_open("/my_semaphore", O_CREAT, 0644, 0);
+    if (sem == SEM_FAILED) {
+        perror("sem_open failed");
+        exit(EXIT_FAILURE);
     }
 
     pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork failed");
+        return 1;
+    }
 
-    if (pid == 0) {
-      
-        execl("./child", "./child", NULL);
-        error_print("execl failed\n");
-    } else if (pid < 0) {
-        error_print("fork failed\n");
-    } else {
+    if (pid != 0) {
+        sem_wait(sem);
 
-        char file_buffer[BUFSIZ];
-        while (fgets(file_buffer, sizeof(file_buffer), file) != NULL) {
+        printf("The result from the child process: %s\n", shared_memory);
 
-            sem_wait(sem_parent);
-
-    
-            strncpy((char *)shm_ptr, file_buffer, SHM_SIZE - 1);
-            ((char *)shm_ptr)[SHM_SIZE - 1] = '\0'; 
-
-
-            sem_post(sem_child);
-        }
-
-        sem_wait(sem_parent);
-        strncpy((char *)shm_ptr, "EOF", SHM_SIZE);
-        sem_post(sem_child);
+        munmap(shared_memory, MAX_BUFFER);
+        shm_unlink("/my_shm");
+        sem_close(sem);
+        sem_unlink("/my_semaphore");
         wait(NULL);
+    } else {
+        char filename[256];
+        printf("Input file name: ");
+        fgets(filename, sizeof(filename), stdin);
+        filename[strcspn(filename, "\n")] = 0;
 
-        // Очистка
-        fclose(file);
-        munmap(shm_ptr, SHM_SIZE);
-        shm_unlink(SHM_NAME);
-        sem_close(sem_parent);
-        sem_close(sem_child);
-        sem_unlink(SEM_PARENT_NAME);
-        sem_unlink(SEM_CHILD_NAME);
+        snprintf(shared_memory, MAX_BUFFER, "%s", filename);
+
+        sem_post(sem);
+
+        char *args[] = {"./child", filename, NULL};
+        execv(args[0], args);
+        perror("execv failed");
+        exit(EXIT_FAILURE);
     }
 
     return 0;

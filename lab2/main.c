@@ -1,6 +1,5 @@
 #include <stdint.h>
 #include <stdbool.h>
-
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -10,26 +9,74 @@
 #include <limits.h>
 #include <time.h>
 
-typedef struct thread_data
-{
+typedef struct thread_data {
     char *word;
     char *string;
     int start;
     int end;
     int found;
-}thread_data;
+} thread_data;
 
-char *get_string();
+void *naive_search(void *arg) {
+    thread_data *data = (thread_data *)arg;
 
-void *naive_search(void *arg);
+    int m = strlen(data->word);
+
+    for (int i = data->start; i < data->end; i++) {
+        int flag = 0;
+        for (int j = 0; j < m; j++) {
+            if (data->string[i + j] == data->word[j]) {
+                flag = 1;
+            }
+            else {
+                flag = 0;
+                break;
+            }
+        }
+        if (flag) {
+            data->found = i;
+            break;
+        }
+    }
+    return NULL;
+}
+
+char *get_string() {
+    int len = 0;
+    int capacity = 1; 
+    char *s = (char*) malloc(sizeof(char));
+
+    char c = getchar();
+
+    while (c != '\n') {
+        s[len++] = c; 
+        char * for_realloc;
+
+        if (len >= capacity) {
+            capacity *= 2; 
+            for_realloc = (char*) realloc(s, capacity * sizeof(char));
+
+            if(!for_realloc) {
+                free(s);
+                return NULL;
+            }
+            s = for_realloc;
+        }
+
+        c = getchar();
+    }
+
+    s[len] = '\0';
+
+    return s;
+}
+
 
 int main(int argc, char *argv[]) {
     int threads_num = strtol(argv[1], NULL, 10);
 
     pthread_t threads[threads_num];
     thread_data threads_data[threads_num];
-
-    // char *string = get_string();
 
     size_t size = 1000000000;
     char *string = (char *)malloc(size * sizeof(char));
@@ -44,7 +91,7 @@ int main(int argc, char *argv[]) {
     int place = 999996;
 
     string[place + 3] = 'l'; string[place + 2] = 'a'; string[place + 1] = 'o'; string[place] = 'g';
-
+    printf("Enter search word: ");
     char *word = get_string();
 
     int part_size = strlen(string) / threads_num;
@@ -91,71 +138,7 @@ int main(int argc, char *argv[]) {
 
     printf("Working time with %d thread(s) is %f s.\n", threads_num, delta_time);
 
-    // clock_t s = clock();
-    // sleep(3);
-    // clock_t e = clock();
-
-    // double delta = ((double)(e - s));
-
-    // printf("1 sec is %f\n", delta);
-
     free(word);
     free(string);
     return 0;
-}
-
-void *naive_search(void *arg) {
-    thread_data *data = (thread_data *)arg;
-
-    int m = strlen(data->word);
-
-    // printf("goooal\n");
-
-    for (int i = data->start; i < data->end; i++) {
-        int flag = 0;
-        for (int j = 0; j < m; j++) {
-            if (data->string[i + j] == data->word[j]) {
-                flag = 1;
-            }
-            else {
-                flag = 0;
-                break;
-            }
-        }
-        if (flag) {
-            data->found = i;
-            // break;
-        }
-    }
-    return NULL;
-}
-
-char *get_string() {
-    int len = 0;
-    int capacity = 1; 
-    char *s = (char*) malloc(sizeof(char));
-
-    char c = getchar();
-
-    while (c != '\n') {
-        s[len++] = c; 
-        char * for_realloc;
-
-        if (len >= capacity) {
-            capacity *= 2; // увеличиваем ёмкость строки в два раза
-            for_realloc = (char*) realloc(s, capacity * sizeof(char)); // перевыделяем память на строку с увеличенной ёмкостью
-
-            if(!for_realloc) {
-                free(s);
-                return NULL;
-            }
-            s = for_realloc;
-        }
-
-        c = getchar();
-    }
-
-    s[len] = '\0'; // завершаем строку символом конца строки
-
-    return s;
 }

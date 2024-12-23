@@ -1,128 +1,71 @@
-#include <fcntl.h>
-#include <semaphore.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
+#include <unistd.h>
 #include <errno.h>
-#include <stdio.h>
+#include <limits.h>
+#include <sys/shm.h>
+#include <semaphore.h>
 
-#define SHM_NAME "/my_shared_memory"
-#define SEM_PARENT_NAME "/sem_parent"
-#define SEM_CHILD_NAME "/sem_child"
-#define SHM_SIZE 1024
+#define MAX_BUFFER 1024
 
-#define BUFFER_SIZE 512
-
-typedef enum {
-    SUCCESS = 0,
-    INVALID_INPUT,
-    DIVISION_BY_ZERO,
-    INT_OVERFLOW,
-} ERROR_CODES;
-
-ERROR_CODES string_to_int(const char *str_number, int *int_result) {
-    if (str_number == NULL || int_result == NULL)
-        return INVALID_INPUT;
+int check_overflow(const char *str_number) {
+    if (!str_number) return 1;
 
     char *endptr;
-    errno = 0;
+    errno = 0; 
     long result = strtol(str_number, &endptr, 10);
 
-    if ((result == LONG_MAX || result == LONG_MIN) && errno == ERANGE)
-        return INT_OVERFLOW;
-    else if (*endptr != '\0' || result > INT_MAX || result < INT_MIN)
-        return INVALID_INPUT;
-
-    *int_result = (int)result;
-    return SUCCESS;
-}
-
-void error_print(const char *error_str) {
-    if (error_str == NULL) {
-        write(STDOUT_FILENO, "ERROR\n", 6);
-    } else {
-        write(STDOUT_FILENO, error_str, strlen(error_str));
-    }
-}
-
-void print_division_result(int result) {
-    char buffer[BUFFER_SIZE];
-    int length = snprintf(buffer, sizeof(buffer), "Division result: %d\n", result);
-    write(STDOUT_FILENO, buffer, length);
-}
-
-int main() {
- 
-    int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
-    if (shm_fd == -1) {
-        error_print("Failed to open shared memory\n");
-        exit(EXIT_FAILURE);
-    }
-
-    void *shm_ptr = mmap(0, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-    if (shm_ptr == MAP_FAILED) {
-        error_print("Failed to map shared memory\n");
-        exit(EXIT_FAILURE);
-    }
-
+    if (endptr == str_number) return 1;
+    if ((result == LONG_MAX || result == LONG_MIN) && errno == ERANGE) return 1;  
+    if (*endptr != '\0' || result > INT_MAX || result < INT_MIN)  return 1;  
     
-    sem_t *sem_parent = sem_open(SEM_PARENT_NAME, 0);
-    sem_t *sem_child = sem_open(SEM_CHILD_NAME, 0);
-    if (sem_parent == SEM_FAILED || sem_child == SEM_FAILED) {
-        error_print("Failed to open semaphores\n");
-        exit(EXIT_FAILURE);
+    return 0;  
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        fprintf(stderr, "Error: no file name\n");
+        return 1;
     }
 
-    char buffer[BUFFER_SIZE];
-    while (1) {
-        
-        sem_wait(sem_child);
-
-        
-        strncpy(buffer, (char *)shm_ptr, BUFFER_SIZE - 1);
-        buffer[BUFFER_SIZE - 1] = '\0';
-
-        if (strcmp(buffer, "EOF") == 0) {
-            break; 
-        }
-
-        int result = 0;
-        int is_first_number = 1;
-
-        char *token = strtok(buffer, " ");
-        while (token != NULL) {
-            int current_value;
-            ERROR_CODES error = string_to_int(token, &current_value);
-
-            if (error != SUCCESS) {
-                error_print("ERROR: Invalid input or overflow\n");
-                exit(error);
-            }
-            if (current_value == 0) {
-                error_print("ERROR: Division by zero\n");
-                exit(DIVISION_BY_ZERO);
-            }
-
-            if (is_first_number) {
-                result = current_value;
-                is_first_number = 0;
-            } else {
-                result /= current_value;
-            }
-
-            token = strtok(NULL, " ");
-        }
-
-        print_division_result(result);
-        sem_post(sem_parent); 
+    const char *filename = argv[1];
+    FILE *file = fopen(filename, "r");
+    if (file == NULL) {
+        perror("Error: file can't be open");
+        return 1;
     }
 
-    munmap(shm_ptr, SHM_SIZE);
-    sem_close(sem_parent);
-    sem_close(sem_child);
+    char line[MAX_BUFFER];
+    while (fgets(line, sizeof(line), file)) {
+        int num1, num2;
+        char *token = strtok(line, " ");
+        if (token != NULL) {
 
+            if (check_overflow(token)) printf("Error: int overflow in token = %s\n", token);
+            else {
+                num1 = atoi(token);
+
+                while ((token = strtok(NULL, " ")) != NULL) {
+                    if (check_overflow(token)) printf("Error: int overflow in token = %s\n", token);
+                    else {
+                        num2 = atoi(token);
+
+                        if (num2 == 0) {
+                            fprintf(stderr, "Error: division by zero, exit();\n");
+                            fclose(file);
+                            exit(EXIT_FAILURE);
+                        }
+                        int result = num1 / num2;
+
+                        printf("%d / %d = %d\n", num1, num2, result);
+                    }
+                    
+                }
+            }
+        }
+    }
+
+    fclose(file);
     return 0;
 }
