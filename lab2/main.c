@@ -88,7 +88,7 @@ int main(int argc, char *argv[]) {
 
     memset(string, 'A', size);
 
-    int place = 999996;
+    int place = 82346;
 
     string[place + 3] = 'l'; string[place + 2] = 'a'; string[place + 1] = 'o'; string[place] = 'g';
     printf("Enter search word: ");

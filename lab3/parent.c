@@ -8,7 +8,7 @@
 #include <sys/wait.h>
 #include <semaphore.h>
 
-#define MAX_BUFFER 1024
+#define MAX_BUFFER 8192
 
 int main() {
     int fd = shm_open("/my_shm", O_CREAT | O_RDWR, 0666);
@@ -20,9 +20,9 @@ int main() {
         exit(EXIT_FAILURE);
     }
 
-    sem_t *sem = sem_open("/my_semaphore", O_CREAT, 0644, 0);
+    sem_t *sem = sem_open("/my_semaphore1", O_CREAT | O_EXCL, 0644, 0);
     if (sem == SEM_FAILED) {
-        perror("sem_open failed");
+        perror("sem_open failed 2");
         exit(EXIT_FAILURE);
     }
 
@@ -35,22 +35,19 @@ int main() {
     if (pid != 0) {
         sem_wait(sem);
 
-        printf("The result from the child process: %s\n", shared_memory);
+        printf("The result from the child process:\n%s", shared_memory);
 
         munmap(shared_memory, MAX_BUFFER);
         shm_unlink("/my_shm");
         sem_close(sem);
-        sem_unlink("/my_semaphore");
+        sem_destroy(sem);
+        sem_unlink("/my_semaphore1");
         wait(NULL);
     } else {
         char filename[256];
         printf("Input file name: ");
         fgets(filename, sizeof(filename), stdin);
         filename[strcspn(filename, "\n")] = 0;
-
-        snprintf(shared_memory, MAX_BUFFER, "%s", filename);
-
-        sem_post(sem);
 
         char *args[] = {"./child", filename, NULL};
         execv(args[0], args);
