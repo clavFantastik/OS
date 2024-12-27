@@ -5,9 +5,27 @@
 #include <unistd.h>
 #include <dlfcn.h>
 #include <sys/stat.h>
-#include <fcntl.h>    
+#include <fcntl.h>
+#include <math.h>
 
 #include "allocator.h"
+
+Allocator* fallback_allocator_create(void* memory, size_t size) {
+    return NULL;
+}
+
+void fallback_allocator_destroy(Allocator* allocator) {
+    ;
+}
+
+void* fallback_allocator_alloc(Allocator* allocator, size_t size) {
+    void* memory = malloc(size);
+    return memory;
+}
+
+void fallback_allocator_free(Allocator* allocator, void* memory) { 
+    free(memory);
+}
 
 char *get_string(char * s, int *len) {
     *len = 0;
@@ -44,17 +62,22 @@ int main(int argc, char **argv) {
     void (*allocator_free)(Allocator*, void*) = dlsym(library, "allocator_free");
 
     if (!allocator_create || !allocator_destroy || !allocator_alloc || !allocator_free) {
-        fprintf(stderr, "Error loading functions from the library\n");
-        dlclose(library);
-        return EXIT_FAILURE;
+            fprintf(stderr, "Error loading functions from the library. Using fallback.\n");
+            allocator_create = fallback_allocator_create;
+            allocator_destroy = fallback_allocator_destroy;
+            allocator_alloc = fallback_allocator_alloc;
+            allocator_free = fallback_allocator_free;
     }
 
+    // printf("До ммапа\n");
     size_t memory_size = (size_t)atoi(argv[2]);
     void* memory = mmap(NULL, memory_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     Allocator* allocator = allocator_create(memory, memory_size);
 
     // Пример использования аллокатора
     int size;
+
+    // printf("Первый аллок\n");
 
     char* ptr1 = allocator_alloc(allocator, sizeof(char) * 100);
     get_string(ptr1, &size); 
@@ -78,4 +101,4 @@ int main(int argc, char **argv) {
     munmap(memory, memory_size);
     dlclose(library);
     return EXIT_SUCCESS;
-}
+} //gcc -o main main.c -ldl

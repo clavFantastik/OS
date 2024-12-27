@@ -5,6 +5,8 @@
 #include <sys/mman.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
+#include <math.h>
 
 typedef struct Allocator Allocator;
 typedef struct Block Block;
